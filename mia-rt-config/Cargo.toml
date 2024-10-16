@@ -1,0 +1,15 @@
+[package]
+name = "mia-rt-config"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+serde_yaml = { workspace = true }
+anyhow = { workspace = true }
+
+[features]
+default = ["v1"]
+v1 = []

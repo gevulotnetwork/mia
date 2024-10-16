@@ -1,111 +1,8 @@
-use nix::mount::{mount, MsFlags};
-use std::fmt::Debug;
-use std::path::PathBuf;
 use std::process;
+use mia_rt_config as _;
 
-#[derive(Debug)]
-struct Mount {
-    source: String,
-    target: String,
-    fstype: String,
-    data: String,
-}
-
-impl Mount {
-    fn new(source: String, target: String, fstype: String, data: String) -> Self {
-        Self {
-            source,
-            target,
-            fstype,
-            data,
-        }
-    }
-
-    fn mount(&self) -> Result<(), Box<dyn std::error::Error>> {
-        mount(
-            Some(self.source.as_str()),
-            self.target.as_str(),
-            Some(self.fstype.as_str()),
-            MsFlags::empty(),
-            Some(self.data.as_str()),
-        )?;
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-struct Mounts(Vec<Mount>);
-
-impl From<Vec<&String>> for Mounts {
-    fn from(mounts: Vec<&String>) -> Self {
-        Self(
-            mounts
-                .iter()
-                .map(|m| {
-                    let parts: Vec<&str> = m.split(':').collect();
-                    let source = parts.first().unwrap().to_string();
-                    let target = parts.get(1).unwrap_or(&"").to_string();
-                    let fstype = parts.get(2).unwrap_or(&"9p").to_string();
-                    let data = parts
-                        .get(3)
-                        .unwrap_or(&"trans=virtio,version=9p2000.L")
-                        .to_string();
-                    Mount::new(source, target, fstype, data)
-                })
-                .collect(),
-        )
-    }
-}
-
-impl Mounts {
-    fn mount(&self) -> Result<(), Box<dyn std::error::Error>> {
-        for mount in &self.0 {
-            println!(
-                "[MIA] mount: {}:{}:{}:{}",
-                &mount.source, &mount.target, &mount.fstype, &mount.data
-            );
-            mount.mount()?;
-        }
-        Ok(())
-    }
-}
-
-struct Modules {
-    modules: Vec<String>,
-    modprobe_path: PathBuf,
-}
-
-impl TryFrom<Vec<&String>> for Modules {
-    type Error = Box<dyn std::error::Error>;
-
-    fn try_from(modules: Vec<&String>) -> Result<Self, Self::Error> {
-        let modprobe_path = PathBuf::from(Self::DEFAULT_MODPROBE_PATH);
-        if !modprobe_path.exists() {
-            return Err(Box::from("modprobe not found"));
-        }
-        println!("[MIA] module: using {}", modprobe_path.display());
-        let modules = modules.into_iter().cloned().collect();
-        Ok(Self {
-            modules,
-            modprobe_path,
-        })
-    }
-}
-
-impl Modules {
-    const DEFAULT_MODPROBE_PATH: &'static str = "/usr/lib/mia/modprobe";
-
-    fn load(&self) -> Result<(), Box<dyn std::error::Error>> {
-        for module in &self.modules {
-            println!("[MIA] module: {}", module);
-            let mut child = process::Command::new(self.modprobe_path.as_os_str())
-                .arg(module)
-                .spawn()?;
-            child.wait()?;
-        }
-        Ok(())
-    }
-}
+mod mount;
+mod kernel_modules;
 
 struct Command {
     env: Vec<(String, String)>,
@@ -157,6 +54,10 @@ fn shutdown() -> Result<(), Box<dyn std::error::Error>> {
 
     reboot(RebootMode::RB_POWER_OFF)?;
     Ok(())
+}
+
+struct CliArgs {
+    pub mounts: Vec<String>,
 }
 
 fn app() -> Result<(), Box<dyn std::error::Error>> {
@@ -215,11 +116,11 @@ fn app() -> Result<(), Box<dyn std::error::Error>> {
     let command = cmd_args.first().ok_or("Command is required")?;
 
     if !modules.is_empty() {
-        let modules = Modules::try_from(modules)?;
+        let modules = kernel_modules::Modules::try_from(modules)?;
         modules.load()?;
     }
 
-    let mounts = Mounts::from(mounts);
+    let mounts = mount::Mounts::from(mounts);
     mounts.mount()?;
 
     let cmd = Command::new(command, cmd_args[1..].to_vec(), env_vars, working_dir);
