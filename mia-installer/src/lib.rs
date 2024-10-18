@@ -7,10 +7,8 @@
 use anyhow::{bail, Context, Result};
 use log::{debug, info};
 use mia_rt_config::MiaRuntimeConfig;
-use std::fs::{self, OpenOptions};
-use std::io::Write;
-use std::os::unix;
-use std::os::unix::fs::OpenOptionsExt;
+use std::fs;
+use std::io::{BufRead, Write};
 use std::path::{self, Path, PathBuf};
 use structopt::StructOpt;
 
@@ -49,14 +47,6 @@ pub struct InstallConfig {
     #[structopt(long, default_value = DEFAULT_INSTALL_PATH)]
     pub install_path: PathBuf,
 
-    /// Don't mount default mounts (`/proc`, `/tmp` etc.).
-    #[structopt(long)]
-    pub no_default_mounts: bool,
-
-    /// Module to load at boot time. May be passed multiple times.
-    #[structopt(long = "kernel-module", name = "kernel-module")]
-    pub kernel_modules: Vec<String>,
-
     /// Don't create symlink to mia.
     #[structopt(long)]
     pub no_symlink: bool,
@@ -91,8 +81,6 @@ impl Default for InstallConfig {
         Self {
             prefix: PathBuf::from(DEFAULT_INSTALL_PREFIX),
             install_path: PathBuf::from(DEFAULT_INSTALL_PATH),
-            no_default_mounts: false,
-            kernel_modules: Vec::new(),
             no_symlink: false,
             symlink_path: PathBuf::from(DEFAULT_SYMLINK_PATH),
             overwrite_symlink: false,
@@ -114,7 +102,7 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     info!("installing MIA to {}", full_mia_path.display());
 
     debug!("creating directory {}", full_mia_path.display());
-    fs::create_dir_all(&full_mia_path).context("create MIA directory")?;
+    run_command(&["mkdir", "-p", full_mia_path.to_str().unwrap()], true)?;
 
     install_mia_binary(&full_mia_path).context("install mia binary")?;
 
@@ -125,6 +113,8 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     install_kmod(&full_mia_path, &config.install_path).context("install kmod")?;
 
     generate_rt_config(&full_mia_path, config).context("generate runtime config")?;
+
+    run_command(&["mkdir", "-p", config.prefix.join("proc").to_str().unwrap()], true)?;
 
     info!("MIA installation completed");
 
@@ -139,13 +129,23 @@ pub fn install(config: &InstallConfig) -> Result<()> {
 fn install_mia_binary(path: &Path) -> Result<()> {
     let mia_bin_path = path.join(MIA_BIN_NAME);
     debug!("writing file {}", mia_bin_path.display());
-    let mut mia_file = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .mode(0o755)
-        .open(&mia_bin_path)
-        .context("create mia file")?;
-    mia_file.write(MIA_BIN).context("write mia file")?;
+
+    let mut child = std::process::Command::new("sudo")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .args(["tee", mia_bin_path.to_str().unwrap()])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .context("spawn tee command for mia binary")?;
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(MIA_BIN)
+        .context("write mia file")?;
+    child.wait().context("wait for tee command")?;
+    run_command(&["chmod", "755", mia_bin_path.to_str().unwrap()], true)
+        .context("change mod for mia binary")?;
     Ok(())
 }
 
@@ -161,7 +161,8 @@ fn install_mia_symlink(config: &InstallConfig) -> Result<()> {
                 .context("strip path separator from symlink base path")?,
         );
         debug!("ensure directory {} exists", symlink_dir.display());
-        fs::create_dir_all(&symlink_dir).context("create mia symlink directory")?;
+        run_command(&["mkdir", "-p", symlink_dir.to_str().unwrap()], true)
+            .context("create mia symlink directory")?;
     }
 
     let full_symlink_path = config.prefix.join(
@@ -178,7 +179,8 @@ fn install_mia_symlink(config: &InstallConfig) -> Result<()> {
                 "symlink {} alreasy exists, removing it",
                 config.symlink_path.display()
             );
-            fs::remove_file(&full_symlink_path).context("remove symlink")?;
+            run_command(&["rm", full_symlink_path.to_str().unwrap()], true)
+                .context("remove symlink")?;
         } else {
             bail!("symlink {} already exists", config.symlink_path.display());
         }
@@ -189,7 +191,16 @@ fn install_mia_symlink(config: &InstallConfig) -> Result<()> {
         full_symlink_path.display(),
         mia_bin_path.display()
     );
-    unix::fs::symlink(mia_bin_path, &full_symlink_path).context("create mia symlink")?;
+    run_command(
+        &[
+            "ln",
+            "-s",
+            mia_bin_path.to_str().unwrap(),
+            full_symlink_path.to_str().unwrap(),
+        ],
+        true,
+    )
+    .context("create mia symlink")?;
 
     Ok(())
 }
@@ -198,13 +209,23 @@ fn install_kmod(full_path: &Path, install_path: &Path) -> Result<()> {
     info!("installing kmod");
     let kmod_bin_path = full_path.join(KMOD_BIN_NAME);
     debug!("writing file {}", kmod_bin_path.display());
-    let mut kmod_file = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .mode(0o755)
-        .open(&kmod_bin_path)
-        .context("create kmod file")?;
-    kmod_file.write(KMOD_BIN).context("write kmod file")?;
+
+    let mut child = std::process::Command::new("sudo")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .args(["tee", kmod_bin_path.to_str().unwrap()])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .context("spawn tee command for kmod binary")?;
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(KMOD_BIN)
+        .context("write kmod file")?;
+    child.wait().context("wait for tee command")?;
+    run_command(&["chmod", "755", kmod_bin_path.to_str().unwrap()], true)
+        .context("change mod for kmod binary")?;
 
     let symlinks = ["depmod", "insmod", "lsmod", "modinfo", "modprobe", "rmmod"];
     let kmod_target_path = install_path.join(KMOD_BIN_NAME);
@@ -215,56 +236,43 @@ fn install_kmod(full_path: &Path, install_path: &Path) -> Result<()> {
             symlink_path.display(),
             kmod_target_path.display()
         );
-        unix::fs::symlink(&kmod_target_path, &symlink_path)
-            .context(format!("create {} symlink", symlink_path.display()))?;
+        run_command(
+            &[
+                "ln",
+                "-s",
+                kmod_target_path.to_str().unwrap(),
+                symlink_path.to_str().unwrap(),
+            ],
+            true,
+        )
+        .context(format!("create {} symlink", symlink_path.display()))?;
     }
 
     Ok(())
 }
 
-fn generate_rt_config(full_path: &Path, config: &InstallConfig) -> Result<()> {
+fn generate_rt_config(full_path: &Path, install_config: &InstallConfig) -> Result<()> {
     info!("generating MIA runtime config");
 
-    let rt_config_path = full_path.join(RT_CONFIG_FILENAME);
-
-    let mut mounts = Vec::new();
-    if !config.no_default_mounts {
-        // TODO: maybe we need other default mounts
-        // TODO: ensure target dir exists
-        mounts.push(mia_rt_config::Mount {
-            source: "proc".into(),
-            target: "/proc".into(),
-            fstype: Some("proc".into()),
-            flags: None,
-            data: None,
-        });
+    if install_config.rt_config_file.is_none() && install_config.rt_config.is_none() {
+        bail!("no runtime config provided");
     }
 
-    let mut rt_config = MiaRuntimeConfig {
-        version: mia_rt_config::VERSION,
-        command: None,
-        args: Vec::new(),
-        env: Vec::new(),
-        working_dir: None,
-        mounts,
-        default_mounts: true,
-        kernel_modules: config.kernel_modules.clone(),
-        bootcmd: Vec::new(),
-    };
+    if install_config.rt_config_file.is_some() && install_config.rt_config.is_some() {
+        bail!("two runtime configs provided at the same time");
+    }
 
-    let mut update_config = config.rt_config.clone();
-    if let Some(rt_config_file) = &config.rt_config_file {
+    let rt_config = if let Some(rt_config) = &install_config.rt_config {
+        rt_config.clone()
+    } else {
+        // Safety: safe to unwrap because of the checks above.
+        let rt_config_file = install_config.rt_config_file.clone().unwrap();
         debug!("reading config file {}", rt_config_file.display());
         let rt_config_file = fs::File::open(rt_config_file).context("open runtime config file")?;
-        update_config = Some(
-            serde_yaml::from_reader(rt_config_file).context("deserialize update runtime config")?,
-        );
-    }
-
-    if let Some(update_config) = update_config {
-        debug!("updating default config with: {:?}", &update_config);
-        rt_config.update(&update_config);
-    }
+        // NOTE: we deserialize config to ensure it's well-formed
+        serde_yaml::from_reader(rt_config_file).context("deserialize runtime config")?
+    };
+    debug!("rt_config={:?}", &rt_config);
 
     let rt_config_string = serde_yaml::to_string(&rt_config).context("serialize runtime config")?;
     info!("generated config:");
@@ -272,16 +280,65 @@ fn generate_rt_config(full_path: &Path, config: &InstallConfig) -> Result<()> {
         info!("  {}", line);
     }
 
-    debug!("writing config to {}", rt_config_path.display());
-    let mut rt_config_file = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .mode(0o664)
-        .open(&rt_config_path)
-        .context("create runtime config file")?;
-    rt_config_file
-        .write(rt_config_string.as_bytes())
+    let rt_config_path = full_path.join(RT_CONFIG_FILENAME);
+
+    let mut child = std::process::Command::new("sudo")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .args(["tee", rt_config_path.to_str().unwrap()])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .context("spawn tee command for runtime config file")?;
+    child
+        .stdin
+        .as_mut()
+        .unwrap()
+        .write_all(rt_config_string.as_bytes())
         .context("write runtime config file")?;
+    child.wait().context("wait for tee command")?;
 
     Ok(())
 }
+
+fn run_command(commands: &[&str], as_root: bool) -> Result<()> {
+    let program = if as_root { "sudo" } else { commands[0] };
+    let args = if as_root { commands } else { &commands[1..] };
+
+    debug!("running command: {program} {:?}", args);
+
+    let mut child = std::process::Command::new(program)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .context("Failed to spawn command")?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("Could not capture stdout."))?;
+
+    let reader = std::io::BufReader::new(stdout);
+    reader
+        .lines()
+        .filter_map(|line| line.ok())
+        .for_each(|line| debug!(target: commands[0], "{}", line));
+
+    let output = child
+        .wait_with_output()
+        .context("Failed to wait for command")?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        String::from_utf8(output.stderr)
+            .context("Failed to parse command stderr")?
+            .lines()
+            .for_each(|line| debug!(target: commands[0], "{}", line));
+        Err(anyhow::anyhow!(
+            "Command failed with status {}",
+            output.status
+        ))
+    }
+}
+
+// TODO(aleasims): replace ugly commands with pure Rust code when able 

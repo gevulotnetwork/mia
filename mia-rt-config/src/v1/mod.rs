@@ -1,7 +1,7 @@
 use serde::de::{Deserializer, Error};
 use serde::{Deserialize, Serialize};
 
-/// Current config version.
+/// Config version.
 pub const VERSION: u16 = 1;
 
 /// Environment variable definition.
@@ -17,12 +17,17 @@ pub struct Mount {
     pub source: String,
     pub target: String,
     pub fstype: Option<String>,
-    pub flags: Option<u32>,
+    pub flags: Option<u64>,
     pub data: Option<String>,
+}
+
+fn true_value() -> bool {
+    true
 }
 
 /// MIA runtime config.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct MiaRuntimeConfig {
     /// Config version.
     #[serde(deserialize_with = "deserialize_version")]
@@ -46,8 +51,8 @@ pub struct MiaRuntimeConfig {
     #[serde(default)]
     pub mounts: Vec<Mount>,
 
-    /// Default mounts (/proc, /tmp etc.).
-    #[serde(default)]
+    /// Default mounts (/proc, /tmp etc.). Defaults to `true`.
+    #[serde(default = "true_value")]
     pub default_mounts: bool,
 
     /// Kernel modules.
@@ -56,31 +61,14 @@ pub struct MiaRuntimeConfig {
 
     /// Boot commands.
     #[serde(default)]
-    pub bootcmd: Vec<String>,
-}
+    pub bootcmd: Vec<Vec<String>>,
 
-impl MiaRuntimeConfig {
-    /// Update current config with values from other one.
+    /// Path to another runtime config file to apply after current one.
     ///
-    /// Different fields of the config are updated differently:
-    ///  - `version` and `default_mounts` will be overwritten
-    ///  - `command` and `working_dir` will be overwritten if they are `Some(_)`
-    ///  - `args` will be overwritten if `command` was overwritten
-    ///  - `env`, `mounts`, `kernel_modules` and `bootcmd` will be appended
-    pub fn update(&mut self, other: &MiaRuntimeConfig) {
-        self.version = other.version;
-        self.default_mounts = other.default_mounts;
-        if other.command.is_some() {
-            self.command = other.command.clone();
-            self.args = other.args.clone();
-        }
-        if other.working_dir.is_some() {
-            self.working_dir = other.working_dir.clone();
-        }
-        self.env.append(&mut other.env.clone());
-        self.mounts.append(&mut other.mounts.clone());
-        self.kernel_modules.append(&mut other.kernel_modules.clone());
-    }
+    /// This option allows to chain configs.
+    /// Followed config will be accessed after all mounting done in the current.
+    /// This means that new config may be located in mounted directory.
+    pub follow_config: Option<String>
 }
 
 /// Deserialize `u16` and compare it to `VERSION`.
@@ -94,3 +82,5 @@ where
     }
     Ok(version)
 }
+
+// TODO(aleasims): version must always be checked first
