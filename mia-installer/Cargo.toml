@@ -1,0 +1,17 @@
+[package]
+name = "mia-installer"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "install-mia"
+path = "src/install_mia.rs"
+
+[dependencies]
+mia-rt-config.workspace = true
+anyhow.workspace = true
+log.workspace = true
+env_logger.workspace = true
+structopt.workspace = true
+serde_yaml.workspace = true
+fs_extra.workspace = true
