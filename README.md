@@ -1,21 +1,22 @@
 MIA
 ===
 
-MIA is a Minimal Init Application. It serves as entrypoint for VM images built from containers by `gvltctl`.
+MIA is a Minimal Init Application. It serves as init process (an alternative to systemd) in Linux VM built for Gevulot Network.
+It is used by default in [Gevulot Control CLI](https://github.com/gevulotnetwork/gvltctl) tool.
+Its job is to configure environment and launch the main application in the VM.
 
-## Functionality
+## Repository
 
-MIA first mounts any necessary filesystems, then starts the user's init process or directly the application.
+- `mia` - MIA source code
+- `mia-installer` - installer for MIA (CLI and library)
+- `mia-rt-config` - MIA Runtime Configuration
 
-MIA is typically called by the kernel when booting a VM. It gets passed any init options that the user specified.
+## Docs
 
-Example invocation:
+MIA is configured through runtime configuration files `config.yaml`.
+
+To understand how MIA operates, check out `mia-rt-config` docs:
+
 ```
-/sbin/mia \
-    --module nvidia \
-    --mount proc:/proc:proc: \
-    --mount input:/mnt/input:9p:trans=virtio,version=9p2000.L \
-    /bin/bash -c "echo hello"
+cargo doc -p mia-rt-config
 ```
-
-The mount syntax is `<device-or-virtfs-tag>:<mountpoint>:<fs-type>:<options>`.
