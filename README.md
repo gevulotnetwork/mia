@@ -1,37 +1,22 @@
 MIA
 ===
 
-MIA is a Minimal Init Application. It serves as entrypoint for VM images built from containers by `gvltctl`.
+MIA is a Minimal Init Application. It serves as init process (an alternative to systemd) in Linux VM built for Gevulot Network.
+It is used by default in [Gevulot Control CLI](https://github.com/gevulotnetwork/gvltctl) tool.
+Its job is to configure environment and launch the main application in the VM.
 
-## Functionality
+## Repository
 
-MIA first mounts any necessary filesystems, then starts the user's init process or directly the application.
+- `mia` - MIA source code
+- `mia-installer` - installer for MIA (CLI and library)
+- `mia-rt-config` - MIA Runtime Configuration
 
-MIA is typically called by the kernel when booting a VM. It gets passed any init options that the user specified.
+## Docs
 
-Example invocation:
-```
-/sbin/mia \
-    --module nvidia \
-    --mount proc:/proc:proc: \
-    --mount input:/mnt/input:9p:trans=virtio,version=9p2000.L \
-    /bin/bash -c "echo hello"
-```
+MIA is configured through runtime configuration files `config.yaml`.
 
-The mount syntax is `<device-or-virtfs-tag>:<mountpoint>:<fs-type>:<options>`.
-
-## Building
-
-The only supported platform for MIA for now is `x86_64-unknown-linux-gnu`.
-
-Install this target, if you don't have it.
+To understand how MIA operates, check out `mia-rt-config` docs:
 
 ```
-rustup target add x86_64-unknown-linux-gnu
-```
-
-Then just cargo build it. There is a `.cargo/config.toml` that ensures the build is statically linked.
-
-```
-cargo build --release
+cargo doc -p mia-rt-config
 ```
