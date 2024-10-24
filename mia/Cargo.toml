@@ -14,8 +14,8 @@ path = "src/mia.rs"
 mia-rt-config = { path = "../mia-rt-config" }
 env_logger = "0.11.5"
 log = "0.4.22"
-nix = { version = "0.29", features = ["mount", "reboot"] }
 serde_yaml = "0.9.34"
+nix = { version = "0.29", features = ["mount", "reboot"] }
 
 [profile.release]
 lto = true

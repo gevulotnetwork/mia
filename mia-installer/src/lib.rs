@@ -14,10 +14,27 @@ use structopt::StructOpt;
 
 /// `mia` binary.
 // TODO: waiting for bindeps to be stabilized
+
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 const MIA_BIN: &[u8] = include_bytes!(concat!(
     env!("OUT_DIR"),
     "/x86_64-unknown-linux-gnu/release/mia"
 ));
+
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+const MIA_BIN: &[u8] = include_bytes!(concat!(
+    env!("OUT_DIR"),
+    "/aarch64-unknown-linux-gnu/release/mia"
+));
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+const MIA_BIN: &[u8] = include_bytes!(concat!(
+    env!("OUT_DIR"),
+    "/aarch64-apple-darwin/release/mia"
+));
+
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+const MIA_BIN: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/x86_64-apple-darwin/release/mia"));
 
 /// Name of the file to create.
 const MIA_BIN_NAME: &str = "mia";
@@ -114,7 +131,10 @@ pub fn install(config: &InstallConfig) -> Result<()> {
 
     generate_rt_config(&full_mia_path, config).context("generate runtime config")?;
 
-    run_command(&["mkdir", "-p", config.prefix.join("proc").to_str().unwrap()], true)?;
+    run_command(
+        &["mkdir", "-p", config.prefix.join("proc").to_str().unwrap()],
+        true,
+    )?;
 
     info!("MIA installation completed");
 
@@ -341,4 +361,4 @@ fn run_command(commands: &[&str], as_root: bool) -> Result<()> {
     }
 }
 
-// TODO(aleasims): replace ugly commands with pure Rust code when able 
+// TODO(aleasims): replace ugly commands with pure Rust code when able
