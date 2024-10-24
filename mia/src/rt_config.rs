@@ -22,6 +22,7 @@ pub fn load(mut path: String) -> Result<Command, Box<dyn std::error::Error>> {
         }
 
         for mount in &config.mounts {
+            #[cfg(target_os = "linux")]
             crate::mount::mount(
                 Some(mount.source.clone()),
                 mount.target.clone(),
@@ -29,6 +30,9 @@ pub fn load(mut path: String) -> Result<Command, Box<dyn std::error::Error>> {
                 mount.flags.clone(),
                 mount.data.clone(),
             )?;
+
+            #[cfg(target_os = "macos")]
+            log::info!("not supported mount for apple yet, {mount:?}");
         }
 
         for env in &config.env {

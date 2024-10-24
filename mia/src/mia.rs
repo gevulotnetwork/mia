@@ -1,5 +1,3 @@
-use nix::sys::reboot::RebootMode;
-
 mod command;
 mod logger;
 mod modprobe;
@@ -8,8 +6,24 @@ mod rt_config;
 
 const TARGET: &str = "";
 
+#[cfg(target_os = "linux")]
 fn shutdown() -> Result<(), Box<dyn std::error::Error>> {
+    use nix::sys::reboot::RebootMode;
     nix::sys::reboot::reboot(RebootMode::RB_POWER_OFF)?;
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn shutdown() -> Result<(), Box<dyn std::error::Error>> {
+    use std::process::Command;
+    Command::new("shutdown").arg("-h").arg("now").status()?;
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+fn shutdown() -> Result<(), Box<dyn std::error::Error>> {
+    // Placeholder for other platforms
+    println!("Shutdown not implemented for this platform");
     Ok(())
 }
 
