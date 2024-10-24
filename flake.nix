@@ -46,7 +46,11 @@
         ];
 
         nativeBuildInputs = with pkgs;
-          [ ]
+          [ 
+            # Some issues while trying to cross compile it to aarch64-unknown-linux-gnu
+            # https://github.com/NixOS/nixpkgs/issues/257258
+            pkgsCross.aarch64-multiplatform.buildPackages.gcc
+          ]
           ++ optional (system == systems.aarch64-darwin) [
             darwin.apple_sdk.frameworks.QuartzCore
             darwin.apple_sdk.frameworks.Foundation
@@ -60,6 +64,15 @@
           ];
 
         shellHook = ''
+          # Add the GCC from the flake to the front of the PATH
+          export PATH="${pkgs.pkgsCross.aarch64-multiplatform.buildPackages.gcc}/bin:$PATH"
+
+          # Set CC environment variable to explicitly use this GCC
+          export CC="${pkgs.pkgsCross.aarch64-multiplatform.buildPackages.gcc}/bin/gcc"
+
+          # If you need to set other GCC-related variables:
+          export CXX="${pkgs.pkgsCross.aarch64-multiplatform.buildPackages.gcc}/bin/g++"
+          export LD="${pkgs.pkgsCross.aarch64-multiplatform.buildPackages.gcc}/bin/gcc"
         '';
 
       };
