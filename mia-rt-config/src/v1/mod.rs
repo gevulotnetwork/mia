@@ -21,6 +21,19 @@ pub struct Mount {
     pub data: Option<String>,
 }
 
+impl Mount {
+    /// Create virtio 9p mount.
+    pub fn virtio9p(source: String, target: String) -> Self {
+        Self {
+            source,
+            target,
+            fstype: Some("9p".to_string()),
+            flags: None,
+            data: Some("trans=virtio,version=9p2000.L".to_string()),
+        }
+    }
+}
+
 fn true_value() -> bool {
     true
 }
@@ -68,7 +81,7 @@ pub struct MiaRuntimeConfig {
     /// This option allows to chain configs.
     /// Followed config will be accessed after all mounting done in the current.
     /// This means that new config may be located in mounted directory.
-    pub follow_config: Option<String>
+    pub follow_config: Option<String>,
 }
 
 /// Deserialize `u16` and compare it to `VERSION`.
