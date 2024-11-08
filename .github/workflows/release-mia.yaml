@@ -1,0 +1,60 @@
+name: Create MIA binary release
+
+# MIA releases are created for tags like `mia-0.1.0`
+on:
+  push:
+    tags:
+      - "mia-[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  x86_64-release:
+    name: x86_64-unknown-linux-gnu
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get tag name # Get tag name from ref
+        id: tag_info
+        run: |
+          echo "tagname=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build MIA
+        run: |
+          cd mia
+          cargo build --release
+      # Since we only support x86_64-unknown-linux-gnu for MIA,
+      # it's fine to hard-code it here now.
+      - name: Archive artifacts
+        id: artifacts
+        run: |
+          mkdir release
+          cp ./mia/target/x86_64-unknown-linux-gnu/release/mia ./release/
+          tar -C ./release -cz -f ${{ steps.tag_info.outputs.tagname }}-x86_64-unknown-linux-gnu.tar.gz .
+          echo "mia=${{ steps.tag_info.outputs.tagname }}-x86_64-unknown-linux-gnu.tar.gz" >> $GITHUB_OUTPUT
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_info: ${{ github.ref }}
+          release_name: Release ${{ steps.tag_info.outputs.tagname }}
+          draft: false
+          prerelease: false
+      - name: Upload release asset
+        id: upload-release-asset
+        # TODO: this Action seems not maintained, so probably we need to do it another way
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./${{ steps.artifacts.outputs.mia }}
+          asset_name: ${{ steps.artifacts.outputs.mia }}
+          asset_content_type: application/tar+gzip
