@@ -1,0 +1,49 @@
+name: Create MIA binary release
+
+on:
+  push:
+    tags:
+      - "mia-*" # MIA releases are created for tags like `mia-0.1.0`
+
+jobs:
+  x86_64-release:
+    name: x86_64-unknown-linux-gnu release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build MIA
+        run: |
+          cd mia
+          cargo build --release
+      - name: Archive artifacts
+        id: archive_artifacts
+        run: |
+          mkdir release
+          cp ./target/x86_64-unknown-linux-gnu/release/mia ./release/
+          tar -C ./release -cz -f ${{ github.ref }}-x86_64-unknown-linux-gnu.tar.gz .
+          echo "MIA_ARCHIVE=${{ github.ref }}-x86_64-unknown-linux-gnu.tar.gz" >> $GITHUB_OUTPUT
+      - name: Create release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+      - name: Upload release asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./${{ steps.archive_artifacts.outputs.MIA_ARCHIVE }}
+          asset_name: ${{ steps.archive_artifacts.outputs.MIA_ARCHIVE }}
+          asset_content_type: application/zip
