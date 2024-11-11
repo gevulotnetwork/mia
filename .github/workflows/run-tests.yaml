@@ -27,3 +27,4 @@ jobs:
         run: |
           mkdir tmp
           RUST_LOG=mia_installer=debug cargo run -- --prefix ./tmp --platform x86_64-unknown-linux-gnu
+          chroot ./tmp /usr/lib/mia/mia
