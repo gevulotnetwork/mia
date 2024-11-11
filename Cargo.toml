@@ -1,23 +1,32 @@
-[workspace]
-resolver = "2"
-
-members = [
-  "mia-installer",
-]
-
-[workspace.package]
-authors = ["Gevulot Team"]
+[package]
+name = "mia-installer"
+version = "0.2.1"
 edition = "2021"
+authors = ["Gevulot Team"]
 repository = "https://github.com/gevulotnetwork/mia"
 
-[workspace.dependencies]
+[[bin]]
+name = "install-mia"
+path = "mia-installer/install_mia.rs"
+
+[lib]
+path = "mia-installer/lib.rs"
+
+[dependencies]
 # TODO: replace rev with tag when possible
 gevulot-rs = { git = "https://github.com/gevulotnetwork/gevulot-rs.git", rev = "f6657f57771b1c549a83cfe6fc822c3db687707e" }
 
 anyhow = "1"
 env_logger = "0.11.5"
+flate2 = "1"
+fs_extra = "1"
 log = "0.4.22"
+octocrab = "0.41.2"
+reqwest = "0.11"
 serde = "1"
 serde_yaml = "0.9.34"
 structopt = "0.3.26"
-fs_extra = "1"
+tar = "0.4.43"
+tempdir = "0.3.7"
+tokio = "1"
+url = "2"

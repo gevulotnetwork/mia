@@ -4,20 +4,23 @@
 //!
 //! This library is self-contained: all required binaries are baked inside.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
+use flate2::read::GzDecoder;
+use gevulot_rs::runtime_config::{self, RuntimeConfig};
 use log::{debug, info};
-use gevulot_rs::runtime_config::RuntimeConfig;
 use std::fs;
 use std::io::{BufRead, Write};
 use std::path::{self, Path, PathBuf};
+use std::process::{Command, Stdio};
 use structopt::StructOpt;
+use tempdir::TempDir;
+use url::Url;
 
-/// `mia` binary.
-// TODO: waiting for bindeps to be stabilized
-const MIA_BIN: &[u8] = include_bytes!(concat!(
-    env!("OUT_DIR"),
-    "/x86_64-unknown-linux-gnu/release/mia"
-));
+/// Owner of MIA repository on GitHub.
+const GITHUB_MIA_OWNER: &str = "gevulotnetwork";
+
+/// MIA repository name on GitHub.
+const GITHUB_MIA_REPO: &str = "mia";
 
 /// Name of the file to create.
 const MIA_BIN_NAME: &str = "mia";
@@ -39,6 +42,22 @@ const RT_CONFIG_FILENAME: &str = "config.yaml";
 #[derive(Clone, Debug, StructOpt)]
 #[structopt(about = "Installs MIA, its dependencies and configuration files.")]
 pub struct InstallConfig {
+    /// MIA version to install.
+    ///
+    /// Examples: `0.1.0`, `latest`, `file:/path/to/mia/binary`.
+    ///
+    /// MIA will be loaded from GitHub Releases of its repository.
+    #[structopt(long, required = false, default_value = "latest")]
+    pub mia_version: String,
+
+    /// MIA platform to install.
+    ///
+    /// If `--mia-version file:PATH` is used, this option is ignored.
+    ///
+    /// Example: `x86_64-unknown-linux-gnu`.
+    #[structopt(long = "platform", required = true)]
+    pub mia_platform: String,
+
     /// Installation prefix.
     #[structopt(long, required = false, default_value = DEFAULT_INSTALL_PREFIX)]
     pub prefix: PathBuf,
@@ -67,13 +86,22 @@ pub struct InstallConfig {
     pub rt_config: Option<RuntimeConfig>,
 
     /// Read additional MIA runtime config from file.
+    ///
+    /// This config is going to be merged with default generated one.
+    /// Any conflicting options in it will be updated.
     #[structopt(long = "runtime-config", name = "runtime-config")]
     pub rt_config_file: Option<PathBuf>,
+
+    /// Run installation commands as root.
+    #[structopt(long)]
+    pub as_root: bool,
 }
 
 impl Default for InstallConfig {
     fn default() -> Self {
         Self {
+            mia_version: "latest".to_string(),
+            mia_platform: "unknown".to_string(),
             prefix: PathBuf::from(DEFAULT_INSTALL_PREFIX),
             install_path: PathBuf::from(DEFAULT_INSTALL_PATH),
             no_symlink: false,
@@ -81,12 +109,18 @@ impl Default for InstallConfig {
             overwrite_symlink: false,
             rt_config: None,
             rt_config_file: None,
+            as_root: false,
         }
     }
 }
 
 /// Install MIA with given installation config.
 pub fn install(config: &InstallConfig) -> Result<()> {
+    let tmp = TempDir::new("mia-installer").context("create temp dir")?;
+    debug!("using temp directory: {}", tmp.path().display());
+
+    let mia_bin = get_mia(tmp.path(), &config.mia_version, &config.mia_platform)?;
+
     let full_mia_path = config.prefix.join(
         config
             .install_path
@@ -97,19 +131,26 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     info!("installing MIA to {}", full_mia_path.display());
 
     debug!("creating directory {}", full_mia_path.display());
-    run_command(&["mkdir", "-p", full_mia_path.to_str().unwrap()], true)?;
+    run_command(
+        &["mkdir", "-p", full_mia_path.to_str().unwrap()],
+        config.as_root,
+    )?;
 
-    install_mia_binary(&full_mia_path).context("install mia binary")?;
+    install_mia_binary(&full_mia_path, &mia_bin, config.as_root).context("install mia binary")?;
 
     if !config.no_symlink {
-        install_mia_symlink(config).context("install mia symlink")?;
+        install_mia_symlink(config, config.as_root).context("install mia symlink")?;
     }
 
-    install_kmod(&full_mia_path, &config.install_path).context("install kmod")?;
+    install_kmod(&full_mia_path, &config.install_path, config.as_root).context("install kmod")?;
 
-    generate_rt_config(&full_mia_path, config).context("generate runtime config")?;
+    generate_rt_config(&full_mia_path, config, config.as_root)
+        .context("generate runtime config")?;
 
-    run_command(&["mkdir", "-p", config.prefix.join("proc").to_str().unwrap()], true)?;
+    run_command(
+        &["mkdir", "-p", config.prefix.join("proc").to_str().unwrap()],
+        config.as_root,
+    )?;
 
     info!("MIA installation completed");
 
@@ -121,30 +162,96 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     Ok(())
 }
 
-fn install_mia_binary(path: &Path) -> Result<()> {
-    let mia_bin_path = path.join(MIA_BIN_NAME);
-    debug!("writing file {}", mia_bin_path.display());
+fn get_mia(tmp: &Path, version: &str, platform: &str) -> Result<PathBuf> {
+    if let Some(version) = version.strip_prefix("file:") {
+        info!("using mia: {}", &version);
+        Ok(PathBuf::from(version))
+    } else {
+        info!("using mia: {} ({})", &version, &platform);
+        tokio::runtime::Runtime::new()?.block_on(fetch_mia(tmp, version, platform))
+    }
+}
 
-    let mut child = std::process::Command::new("sudo")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .args(["tee", mia_bin_path.to_str().unwrap()])
-        .stdin(std::process::Stdio::piped())
-        .spawn()
-        .context("spawn tee command for mia binary")?;
-    child
-        .stdin
-        .as_mut()
-        .unwrap()
-        .write_all(MIA_BIN)
-        .context("write mia file")?;
-    child.wait().context("wait for tee command")?;
-    run_command(&["chmod", "755", mia_bin_path.to_str().unwrap()], true)
+async fn fetch_mia(tmp: &Path, version: &str, platform: &str) -> Result<PathBuf> {
+    let octocrab = octocrab::instance();
+    let repo = octocrab.repos(GITHUB_MIA_OWNER, GITHUB_MIA_REPO);
+    let releases = repo.releases();
+
+    let release = if version == "latest" {
+        let release = releases
+            .get_latest()
+            .await
+            .context("get latest MIA release")?;
+        release
+    } else {
+        // Expected format of MIA release tags is `mia-X.Y.Z`
+        releases
+            .get_by_tag(&format!("mia-{}", version))
+            .await
+            .context(format!("get MIA release {}", version))?
+    };
+
+    let version = release
+        .tag_name
+        .strip_prefix("mia-")
+        .ok_or(anyhow!("invalid release tag"))?;
+    debug!("using mia-{}", &version);
+
+    let asset_filename = format!("mia-{}-{}", &version, platform);
+    debug!("searching for {} package", &asset_filename);
+
+    let asset = release
+        .assets
+        .iter()
+        .find(|asset| asset.name.starts_with(&asset_filename))
+        .ok_or(anyhow!(
+            "failed to find MIA package in release mia-{}",
+            version
+        ))?;
+
+    let asset_dir = match asset.content_type.as_str() {
+        "application/tar+gzip" => {
+            fetch_tar_gz(tmp, &asset_filename, asset.browser_download_url.clone()).await?
+        }
+        ct => {
+            bail!("unsupported context type for package: {}", ct);
+        }
+    };
+
+    Ok(asset_dir.join(MIA_BIN_NAME))
+}
+
+/// Fetch and unpack `.tar.gz` archive returning file to output directory.
+async fn fetch_tar_gz(tmp: &Path, filename: &str, url: Url) -> Result<PathBuf> {
+    debug!("fetching {}", &url);
+    let response = reqwest::get(url).await.context("GET request")?;
+    let bytes = response.bytes().await.context("read response body")?;
+    let tar = GzDecoder::new(bytes.as_ref());
+    let mut archive = tar::Archive::new(tar);
+    let path = tmp.join(filename);
+    debug!("unpacking archive to {}", path.display());
+    archive.unpack(&path)?;
+    Ok(path)
+}
+
+fn install_mia_binary(path: &Path, mia_source: &Path, as_root: bool) -> Result<()> {
+    let mia_bin_path = path.join(MIA_BIN_NAME);
+    debug!("copying to {}", mia_bin_path.display());
+    run_command(
+        &[
+            "cp",
+            mia_source.to_str().unwrap(),
+            mia_bin_path.to_str().unwrap(),
+        ],
+        as_root,
+    )
+    .context("copy mia binary")?;
+    run_command(&["chmod", "755", mia_bin_path.to_str().unwrap()], as_root)
         .context("change mod for mia binary")?;
     Ok(())
 }
 
-fn install_mia_symlink(config: &InstallConfig) -> Result<()> {
+fn install_mia_symlink(config: &InstallConfig, as_root: bool) -> Result<()> {
     debug_assert!(!config.no_symlink);
     info!("symlinking MIA");
     let mia_bin_path = config.install_path.join(MIA_BIN_NAME);
@@ -156,7 +263,7 @@ fn install_mia_symlink(config: &InstallConfig) -> Result<()> {
                 .context("strip path separator from symlink base path")?,
         );
         debug!("ensure directory {} exists", symlink_dir.display());
-        run_command(&["mkdir", "-p", symlink_dir.to_str().unwrap()], true)
+        run_command(&["mkdir", "-p", symlink_dir.to_str().unwrap()], as_root)
             .context("create mia symlink directory")?;
     }
 
@@ -174,7 +281,7 @@ fn install_mia_symlink(config: &InstallConfig) -> Result<()> {
                 "symlink {} alreasy exists, removing it",
                 config.symlink_path.display()
             );
-            run_command(&["rm", full_symlink_path.to_str().unwrap()], true)
+            run_command(&["rm", full_symlink_path.to_str().unwrap()], as_root)
                 .context("remove symlink")?;
         } else {
             bail!("symlink {} already exists", config.symlink_path.display());
@@ -193,23 +300,32 @@ fn install_mia_symlink(config: &InstallConfig) -> Result<()> {
             mia_bin_path.to_str().unwrap(),
             full_symlink_path.to_str().unwrap(),
         ],
-        true,
+        as_root,
     )
     .context("create mia symlink")?;
 
     Ok(())
 }
 
-fn install_kmod(full_path: &Path, install_path: &Path) -> Result<()> {
+fn install_kmod(full_path: &Path, install_path: &Path, as_root: bool) -> Result<()> {
     info!("installing kmod");
     let kmod_bin_path = full_path.join(KMOD_BIN_NAME);
     debug!("writing file {}", kmod_bin_path.display());
 
-    let mut child = std::process::Command::new("sudo")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .args(["tee", kmod_bin_path.to_str().unwrap()])
-        .stdin(std::process::Stdio::piped())
+    let mut cmd = if as_root {
+        Command::new("sudo")
+    } else {
+        Command::new("tee")
+    };
+    if as_root {
+        cmd.args(["tee", kmod_bin_path.to_str().unwrap()]);
+    } else {
+        cmd.arg(kmod_bin_path.to_str().unwrap());
+    }
+    let mut child = cmd
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .stdin(Stdio::piped())
         .spawn()
         .context("spawn tee command for kmod binary")?;
     child
@@ -219,7 +335,7 @@ fn install_kmod(full_path: &Path, install_path: &Path) -> Result<()> {
         .write_all(KMOD_BIN)
         .context("write kmod file")?;
     child.wait().context("wait for tee command")?;
-    run_command(&["chmod", "755", kmod_bin_path.to_str().unwrap()], true)
+    run_command(&["chmod", "755", kmod_bin_path.to_str().unwrap()], as_root)
         .context("change mod for kmod binary")?;
 
     let symlinks = ["depmod", "insmod", "lsmod", "modinfo", "modprobe", "rmmod"];
@@ -238,7 +354,7 @@ fn install_kmod(full_path: &Path, install_path: &Path) -> Result<()> {
                 kmod_target_path.to_str().unwrap(),
                 symlink_path.to_str().unwrap(),
             ],
-            true,
+            as_root,
         )
         .context(format!("create {} symlink", symlink_path.display()))?;
     }
@@ -246,12 +362,12 @@ fn install_kmod(full_path: &Path, install_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn generate_rt_config(full_path: &Path, install_config: &InstallConfig) -> Result<()> {
+fn generate_rt_config(
+    full_path: &Path,
+    install_config: &InstallConfig,
+    as_root: bool,
+) -> Result<()> {
     info!("generating MIA runtime config");
-
-    if install_config.rt_config_file.is_none() && install_config.rt_config.is_none() {
-        bail!("no runtime config provided");
-    }
 
     if install_config.rt_config_file.is_some() && install_config.rt_config.is_some() {
         bail!("two runtime configs provided at the same time");
@@ -259,13 +375,17 @@ fn generate_rt_config(full_path: &Path, install_config: &InstallConfig) -> Resul
 
     let rt_config = if let Some(rt_config) = &install_config.rt_config {
         rt_config.clone()
-    } else {
-        // Safety: safe to unwrap because of the checks above.
-        let rt_config_file = install_config.rt_config_file.clone().unwrap();
+    } else if let Some(rt_config_file) = &install_config.rt_config_file {
         debug!("reading config file {}", rt_config_file.display());
         let rt_config_file = fs::File::open(rt_config_file).context("open runtime config file")?;
         // NOTE: we deserialize config to ensure it's well-formed
         serde_yaml::from_reader(rt_config_file).context("deserialize runtime config")?
+    } else {
+        debug!("creating default (empty) runtime config");
+        RuntimeConfig {
+            version: runtime_config::VERSION.to_string(),
+            ..Default::default()
+        }
     };
     debug!("rt_config={:?}", &rt_config);
 
@@ -277,11 +397,21 @@ fn generate_rt_config(full_path: &Path, install_config: &InstallConfig) -> Resul
 
     let rt_config_path = full_path.join(RT_CONFIG_FILENAME);
 
-    let mut child = std::process::Command::new("sudo")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .args(["tee", rt_config_path.to_str().unwrap()])
-        .stdin(std::process::Stdio::piped())
+    let mut cmd = if as_root {
+        Command::new("sudo")
+    } else {
+        Command::new("tee")
+    };
+    if as_root {
+        cmd.args(["tee", rt_config_path.to_str().unwrap()]);
+    } else {
+        cmd.arg(rt_config_path.to_str().unwrap());
+    }
+
+    let mut child = cmd
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .stdin(Stdio::piped())
         .spawn()
         .context("spawn tee command for runtime config file")?;
     child
@@ -301,17 +431,17 @@ fn run_command(commands: &[&str], as_root: bool) -> Result<()> {
 
     debug!("running command: {program} {:?}", args);
 
-    let mut child = std::process::Command::new(program)
+    let mut child = Command::new(program)
         .args(args)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .context("Failed to spawn command")?;
 
     let stdout = child
         .stdout
         .take()
-        .ok_or_else(|| anyhow::anyhow!("Could not capture stdout."))?;
+        .ok_or_else(|| anyhow!("Could not capture stdout."))?;
 
     let reader = std::io::BufReader::new(stdout);
     reader
@@ -329,11 +459,8 @@ fn run_command(commands: &[&str], as_root: bool) -> Result<()> {
             .context("Failed to parse command stderr")?
             .lines()
             .for_each(|line| debug!(target: commands[0], "{}", line));
-        Err(anyhow::anyhow!(
-            "Command failed with status {}",
-            output.status
-        ))
+        Err(anyhow!("Command failed with status {}", output.status))
     }
 }
 
-// TODO(aleasims): replace ugly commands with pure Rust code when able 
+// TODO(aleasims): replace ugly commands with pure Rust code when able
