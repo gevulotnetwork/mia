@@ -11,7 +11,9 @@ name = "mia"
 path = "src/mia.rs"
 
 [dependencies]
-mia-rt-config = { path = "../mia-rt-config" }
+# TODO: replace rev with tag when possible
+gevulot-rs = { git = "https://github.com/gevulotnetwork/gevulot-rs.git", rev = "f6657f57771b1c549a83cfe6fc822c3db687707e" }
+
 env_logger = "0.11.5"
 log = "0.4.22"
 nix = { version = "0.29", features = ["mount", "reboot"] }

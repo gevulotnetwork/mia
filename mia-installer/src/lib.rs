@@ -6,7 +6,7 @@
 
 use anyhow::{bail, Context, Result};
 use log::{debug, info};
-use mia_rt_config::MiaRuntimeConfig;
+use gevulot_rs::runtime_config::RuntimeConfig;
 use std::fs;
 use std::io::{BufRead, Write};
 use std::path::{self, Path, PathBuf};
@@ -64,14 +64,9 @@ pub struct InstallConfig {
     /// This works the same way as `rt_config_file`.
     /// If `rt_config_file` is provided, this config will be ignored.
     #[structopt(skip)]
-    pub rt_config: Option<MiaRuntimeConfig>,
+    pub rt_config: Option<RuntimeConfig>,
 
     /// Read additional MIA runtime config from file.
-    ///
-    /// This config is going to be merged with default generated one.
-    /// Any conflicting options in it will be updated.
-    ///
-    /// See [`MiaRuntimeConfig::update`].
     #[structopt(long = "runtime-config", name = "runtime-config")]
     pub rt_config_file: Option<PathBuf>,
 }
