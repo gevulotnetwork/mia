@@ -1,4 +1,4 @@
-use mia_rt_config::MiaRuntimeConfig;
+use gevulot_rs::runtime_config::RuntimeConfig;
 
 use crate::command::Command;
 use crate::modprobe::Modprobe;
@@ -14,7 +14,7 @@ pub fn load(mut path: String) -> Result<Command, Box<dyn std::error::Error>> {
         log::info!(target: TARGET, "loading {}", &path);
 
         let config_file = std::fs::File::open(&path)?;
-        let config: MiaRuntimeConfig = serde_yaml::from_reader(config_file)?;
+        let config: RuntimeConfig = serde_yaml::from_reader(config_file)?;
 
         if config.default_mounts && !default_mounts_done {
             crate::mount::default_mounts()?;

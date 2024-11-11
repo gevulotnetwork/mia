@@ -3,7 +3,6 @@ resolver = "2"
 
 members = [
   "mia-installer",
-  "mia-rt-config",
 ]
 
 [workspace.package]
@@ -12,7 +11,9 @@ edition = "2021"
 repository = "https://github.com/gevulotnetwork/mia"
 
 [workspace.dependencies]
-mia-rt-config = { path = "mia-rt-config" }
+# TODO: replace rev with tag when possible
+gevulot-rs = { git = "https://github.com/gevulotnetwork/gevulot-rs.git", rev = "f6657f57771b1c549a83cfe6fc822c3db687707e" }
+
 anyhow = "1"
 env_logger = "0.11.5"
 log = "0.4.22"

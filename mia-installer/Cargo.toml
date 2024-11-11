@@ -8,7 +8,8 @@ name = "install-mia"
 path = "src/install_mia.rs"
 
 [dependencies]
-mia-rt-config.workspace = true
+gevulot-rs.workspace = true
+
 anyhow.workspace = true
 log.workspace = true
 env_logger.workspace = true
