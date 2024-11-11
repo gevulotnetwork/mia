@@ -78,17 +78,11 @@ pub struct InstallConfig {
     #[structopt(long)]
     pub overwrite_symlink: bool,
 
-    /// Additional MIA runtime config.
-    ///
-    /// This works the same way as `rt_config_file`.
-    /// If `rt_config_file` is provided, this config will be ignored.
+    /// MIA runtime config.
     #[structopt(skip)]
     pub rt_config: Option<RuntimeConfig>,
 
     /// Read additional MIA runtime config from file.
-    ///
-    /// This config is going to be merged with default generated one.
-    /// Any conflicting options in it will be updated.
     #[structopt(long = "runtime-config", name = "runtime-config")]
     pub rt_config_file: Option<PathBuf>,
 
