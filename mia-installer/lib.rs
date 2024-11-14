@@ -14,6 +14,7 @@ use std::path::{self, Path, PathBuf};
 use std::process::{Command, Stdio};
 use structopt::StructOpt;
 use tempdir::TempDir;
+use tokio::runtime;
 use url::Url;
 
 /// Owner of MIA repository on GitHub.
@@ -162,11 +163,24 @@ fn get_mia(tmp: &Path, version: &str, platform: &str) -> Result<PathBuf> {
         Ok(PathBuf::from(version))
     } else {
         info!("using mia: {} ({})", &version, &platform);
-        tokio::runtime::Runtime::new()?.block_on(fetch_mia(tmp, version, platform))
+        let tmp = tmp.to_path_buf();
+        let version = version.to_string();
+        let platform = platform.to_string();
+        if let Ok(handle) = runtime::Handle::try_current() {
+            std::thread::spawn(move || handle.block_on(fetch_mia(tmp, version, platform)))
+                .join()
+                .map_err(|_| anyhow!("failed to join thread"))?
+        } else {
+            std::thread::spawn(|| {
+                runtime::Runtime::new()?.block_on(fetch_mia(tmp, version, platform))
+            })
+            .join()
+            .map_err(|_| anyhow!("failed to join thread"))?
+        }
     }
 }
 
-async fn fetch_mia(tmp: &Path, version: &str, platform: &str) -> Result<PathBuf> {
+async fn fetch_mia(tmp: PathBuf, version: String, platform: String) -> Result<PathBuf> {
     let octocrab = octocrab::instance();
     let repo = octocrab.repos(GITHUB_MIA_OWNER, GITHUB_MIA_REPO);
     let releases = repo.releases();
@@ -205,7 +219,7 @@ async fn fetch_mia(tmp: &Path, version: &str, platform: &str) -> Result<PathBuf>
 
     let asset_dir = match asset.content_type.as_str() {
         "application/tar+gzip" => {
-            fetch_tar_gz(tmp, &asset_filename, asset.browser_download_url.clone()).await?
+            fetch_tar_gz(&tmp, &asset_filename, asset.browser_download_url.clone()).await?
         }
         ct => {
             bail!("unsupported context type for package: {}", ct);
