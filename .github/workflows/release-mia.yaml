@@ -10,56 +10,110 @@ on:
 permissions:
   contents: write
 
+# Since we only support x86_64-unknown-linux-gnu for MIA,
+# it's fine to hard-code it here now.
+env:
+  TARGET_PLATFORM: x86_64-unknown-linux-gnu
+
 jobs:
   x86_64-release:
-    name: x86_64-unknown-linux-gnu
+    name: x86_64 release
+
     runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash
+
     steps:
-      - name: Get tag name # Get tag name from ref
-        id: tag_info
-        run: |
-          echo "tagname=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
       - name: Checkout source code
         uses: actions/checkout@v4
+
+      # Get release version
+      - name: Get MIA release version from tag name
+        run: |
+          VERSION=$(echo "${{ github.ref_name }}" | grep -E "^mia-[0-9]+.[0-9]+.[0-9]+$")
+          if [[ -z $VERSION ]]; then
+            echo "Ref is not a MIA release tag."
+            echo "To create MIA release, use tag names like `mia-0.1.0``."
+            exit 1;
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Install jq
+        run: apt-get install jq
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
         with:
-          fetch-depth: 0
+          toolchain: ${{ env.TARGET_PLATFORM }}
+
+      - name: Get MIA crate version
+        run: |
+          cd mia
+          CARGO_VERSION=$(cargo metadata \
+            --format-version=1 \
+            --no-deps \
+            | jq \
+            --raw-output \
+            '.packages[] | select(.name == "mia") | .version')
+          echo "CARGO_VERSION=$CARGO_VERSION" >> $GITHUB_ENV
+
+      - name: Check tag name is aligned with Cargo.toml version
+        run: |
+          if [[ "$CARGO_VERSION" != "$VERSION" ]]; then
+            echo "Tag name is not aligned with MIA crate version."
+            echo "Please ensure that Cargo.toml version is updated."
+            exit 1;
+          fi
+
+      - name: Print release version
+        run: echo $VERSION
+
+      # Install binary dependencies
       - name: Install buf
         uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+
+      # Build sources
       - name: Build MIA
         run: |
           cd mia
-          cargo build --release
-      # Since we only support x86_64-unknown-linux-gnu for MIA,
-      # it's fine to hard-code it here now.
+          cargo build --release --target $TARGET_PLATFORM
+
+      # Package MIA
       - name: Archive artifacts
         id: artifacts
         run: |
+          ARCHIVE_NAME="mia-$VERSION-$TARGET_PLATFORM.tar.gz"
           mkdir release
-          cp ./mia/target/x86_64-unknown-linux-gnu/release/mia ./release/
-          tar -C ./release -cz -f ${{ steps.tag_info.outputs.tagname }}-x86_64-unknown-linux-gnu.tar.gz .
-          echo "mia=${{ steps.tag_info.outputs.tagname }}-x86_64-unknown-linux-gnu.tar.gz" >> $GITHUB_OUTPUT
-      - name: Create release
-        id: create_release
-        uses: actions/create-release@v1
+          cp ./mia/target/$TARGET_PLATFORM/release/mia ./release/
+          tar -C ./release -cz -f $ARCHIVE_NAME .
+          echo "mia=$ARCHIVE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Calculate SHA256 checksum
+        id: checksums
+        run: |
+          CHECKSUM_NAME="$ARCHIVE_NAME.sha256"
+          sha256sum ${{ steps.artifacts.outputs.mia }} | cut -d " " -f 1 > $CHECKSUM_NAME
+          echo "mia_checksum=$CHECKSUM_NAME" >> $GITHUB_OUTPUT
+
+      # Create GitHub release
+      - name: Create GitHub release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ steps.tag_info.outputs.tagname }}
-          draft: false
-          prerelease: false
-      - name: Upload release asset
-        id: upload-release-asset
-        # TODO: this Action seems not maintained, so probably we need to do it another way
-        uses: actions/upload-release-asset@v1
+        shell: bash
+        run: gh release create "$VERSION" --draft --title "mia-$VERSION"
+
+      - name: Upload release assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./${{ steps.artifacts.outputs.mia }}
-          asset_name: ${{ steps.artifacts.outputs.mia }}
-          asset_content_type: application/tar+gzip
+        shell: bash
+        run: |
+          gh release upload "$VERSION" \
+            ${{ steps.artifacts.outputs.mia }} \
+            ${{ steps.checksums.outputs.mia_checksum }}
