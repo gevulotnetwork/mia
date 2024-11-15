@@ -6,7 +6,6 @@
 
 use anyhow::{anyhow, bail, Context, Result};
 use flate2::read::GzDecoder;
-use gevulot_rs::runtime_config::{self, RuntimeConfig};
 use log::{debug, info};
 use std::fs;
 use std::io::{BufRead, Write};
@@ -16,6 +15,10 @@ use structopt::StructOpt;
 use tempdir::TempDir;
 use tokio::runtime;
 use url::Url;
+
+// Re-export runtime-config to avoid interdependencies between `gevulot-rs`,
+// `mia` and `gvltctl`.
+pub use gevulot_rs::runtime_config::{self, RuntimeConfig};
 
 /// Owner of MIA repository on GitHub.
 const GITHUB_MIA_OWNER: &str = "gevulotnetwork";
