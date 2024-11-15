@@ -2,6 +2,7 @@ name: Create MIA binary release
 
 # MIA releases are created for tags like `mia-0.1.0`
 on:
+  workflow_dispatch:
   push:
     tags:
       - "mia-[0-9]+.[0-9]+.[0-9]+"
