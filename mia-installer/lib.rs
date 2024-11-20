@@ -189,11 +189,10 @@ async fn fetch_mia(tmp: PathBuf, version: String, platform: String) -> Result<Pa
     let releases = repo.releases();
 
     let release = if version == "latest" {
-        let release = releases
+        releases
             .get_latest()
             .await
-            .context("get latest MIA release")?;
-        release
+            .context("get latest MIA release")?
     } else {
         // Expected format of MIA release tags is `mia-X.Y.Z`
         releases
@@ -457,7 +456,7 @@ fn run_command(commands: &[&str], as_root: bool) -> Result<()> {
     let reader = std::io::BufReader::new(stdout);
     reader
         .lines()
-        .filter_map(|line| line.ok())
+        .map_while(Result::ok)
         .for_each(|line| debug!(target: commands[0], "{}", line));
 
     let output = child

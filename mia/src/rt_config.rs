@@ -26,7 +26,7 @@ pub fn load(mut path: String) -> Result<Command, Box<dyn std::error::Error>> {
                 Some(mount.source.clone()),
                 mount.target.clone(),
                 mount.fstype.clone(),
-                mount.flags.clone(),
+                mount.flags,
                 mount.data.clone(),
             )?;
         }
@@ -47,7 +47,7 @@ pub fn load(mut path: String) -> Result<Command, Box<dyn std::error::Error>> {
 
         for cmd in &config.bootcmd {
             log::info!(target: TARGET, "bootcmd: {}", cmd.join(" "));
-            if cmd.len() < 1 {
+            if cmd.is_empty() {
                 return Err(Box::from("no command to run found"));
             }
             Command::new(cmd[0].clone(), cmd[1..].to_vec()).run()?;

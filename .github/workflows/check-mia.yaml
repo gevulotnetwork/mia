@@ -1,0 +1,56 @@
+name: Check MIA
+
+on:
+  pull_request:
+    paths:
+      - mia/**
+  push:
+    paths:
+      - mia/**
+    branches:
+      - main
+    tags:
+      - "*"
+
+jobs:
+  test:
+    name: All MIA checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mia/
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Use Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust
+          workspaces: "./mia -> target"
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run linting
+        run: cargo clippy --locked --no-deps -- --deny warnings
+
+      - name: Check build
+        run: cargo check --locked
+
+      - name: Run tests
+        run: cargo test --locked

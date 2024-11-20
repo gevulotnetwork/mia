@@ -9,14 +9,14 @@ pub fn mount(
     flags: Option<u64>,
     data: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let source = source.as_ref().map(String::as_str);
-    let fstype = fstype.as_ref().map(String::as_str);
+    let source = source.as_deref();
+    let fstype = fstype.as_deref();
     let flags = if let Some(bits) = flags {
         MsFlags::from_bits(bits).ok_or("Invalid mount flags")?
     } else {
         MsFlags::empty()
     };
-    let data = data.as_ref().map(String::as_str);
+    let data = data.as_deref();
     log::info!(
         target: TARGET,
         "{}:{}:{}:{}",

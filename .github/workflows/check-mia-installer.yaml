@@ -1,0 +1,64 @@
+name: Check MIA installer
+
+on:
+  pull_request:
+    paths:
+      - mia-installer/**
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - pre-built-deps/**
+  push:
+    paths:
+      - mia-installer/**
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - pre-built-deps/**
+    branches:
+      - main
+    tags:
+      - "*"
+
+jobs:
+  test:
+    name: All MIA installer checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Use Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust
+          workspaces: ". -> target"
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run linting
+        run: cargo clippy --locked --no-deps -- --deny warnings
+
+      - name: Run tests
+        run: cargo test --locked
+
+      - name: Test MIA installation
+        run: |
+          mkdir tmp
+          RUST_LOG=mia_installer=debug cargo run -- \
+            --prefix ./tmp \
+            --platform x86_64-unknown-linux-gnu
