@@ -43,6 +43,9 @@ fn main() -> ! {
         false
     };
 
+    // Sync filesystems before attempting to shutdown.
+    nix::unistd::sync();
+
     if qemu::QEMU_EXIT_HANDLER.get().is_some() {
         qemu::exit(err);
     }
