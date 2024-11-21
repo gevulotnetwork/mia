@@ -1,7 +1,8 @@
-use gevulot_rs::runtime_config::RuntimeConfig;
+use gevulot_rs::runtime_config::{DebugExit, RuntimeConfig};
 
 use crate::command::Command;
 use crate::modprobe::Modprobe;
+use crate::qemu;
 
 const TARGET: &str = "rt-config";
 
@@ -19,6 +20,15 @@ pub fn load(mut path: String) -> Result<Command, Box<dyn std::error::Error>> {
         if config.default_mounts && !default_mounts_done {
             crate::mount::default_mounts()?;
             default_mounts_done = true; // avoid re-mounting
+        }
+
+        if let Some(DebugExit::X86 {
+            iobase,
+            iosize,
+            success_code,
+        }) = &config.debug_exit
+        {
+            qemu::setup(*iobase, *iosize as u64, *success_code)?;
         }
 
         for mount in &config.mounts {

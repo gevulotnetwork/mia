@@ -27,7 +27,18 @@ impl Command {
             command.arg(arg);
         }
         let mut child = command.spawn()?;
-        child.wait()?; // Reap the child process to avoid zombie processes
+        let status = child.wait()?; // Reap the child process to avoid zombie processes
+        if !status.success() {
+            return Err(Box::from(format!(
+                "command `{}` failed with code: {}",
+                &self.command,
+                status
+                    .code()
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or("<unknown>".to_string())
+            )));
+        }
         Ok(())
     }
 }

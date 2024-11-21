@@ -3,7 +3,7 @@
 
 [package]
 name = "mia"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 
 [[bin]]
@@ -12,12 +12,15 @@ path = "src/mia.rs"
 
 [dependencies]
 # TODO: replace rev with tag when possible
-gevulot-rs = { git = "https://github.com/gevulotnetwork/gevulot-rs.git", rev = "f6657f57771b1c549a83cfe6fc822c3db687707e" }
+gevulot-rs = { git = "https://github.com/gevulotnetwork/gevulot-rs.git", rev = "997bd6c5266a98a69253c58b4bd1a35e8d3ec7ae" }
 
 env_logger = "0.11.5"
+libc = "0.2"
 log = "0.4.22"
-nix = { version = "0.29", features = ["mount", "reboot"] }
+nix = { version = "0.29", features = ["mount", "reboot", "fs"] }
+once_cell = "1"
 serde_yaml = "0.9.34"
+qemu-exit = "3"
 
 [profile.release]
 lto = true

@@ -4,13 +4,20 @@ mod command;
 mod logger;
 mod modprobe;
 mod mount;
+mod qemu;
 mod rt_config;
 
 const TARGET: &str = "";
 
-fn shutdown() -> Result<(), Box<dyn std::error::Error>> {
-    nix::sys::reboot::reboot(RebootMode::RB_POWER_OFF)?;
-    Ok(())
+fn shutdown() -> ! {
+    log::info!(target: TARGET, "shutdown");
+    let Err(err) = nix::sys::reboot::reboot(RebootMode::RB_POWER_OFF);
+    log::error!(target: TARGET, "shutdown error: {} ({})", err.desc(), err as i32);
+    // None of the errors from libc::reboot can happened here, because this process must always have
+    // right permissions. So this code can be marked as unreachable.
+    // If an error is encountered, then it's either an error in `nix` or inappropriate use of MIA.
+    // In both of that cases panicing here and causing kernel panic is okay.
+    unreachable!("internal error on poweroff")
 }
 
 const MIA_CONFIG_PATH: &str = "/usr/lib/mia/config.yaml";
@@ -24,17 +31,24 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
     log::info!(target: TARGET, "run main process");
     cmd.run()?;
 
-    log::info!(target: TARGET, "shutdown");
-    shutdown()?;
-
     Ok(())
 }
 
-fn main() {
-    if let Err(e) = start() {
+// Init process should never return.
+fn main() -> ! {
+    let err = if let Err(e) = start() {
         log::error!(target: TARGET, "{}", e);
+        true
+    } else {
+        false
+    };
+
+    // Sync filesystems before attempting to shutdown.
+    nix::unistd::sync();
+
+    if qemu::QEMU_EXIT_HANDLER.get().is_some() {
+        qemu::exit(err);
     }
-    if let Err(e) = shutdown() {
-        log::error!(target: TARGET, "Shutdown Error: {}", e);
-    }
+    // If no exit handler was set, perform simple shutdown.
+    shutdown()
 }
