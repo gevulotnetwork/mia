@@ -162,10 +162,10 @@ pub fn install(config: &InstallConfig) -> Result<()> {
 
 fn get_mia(tmp: &Path, version: &str, platform: &str) -> Result<PathBuf> {
     if let Some(version) = version.strip_prefix("file:") {
-        info!("using mia: {}", &version);
+        info!("using MIA: {}", &version);
         Ok(PathBuf::from(version))
     } else {
-        info!("using mia: {} ({})", &version, &platform);
+        info!("downloading MIA: {} ({})", &version, &platform);
         let tmp = tmp.to_path_buf();
         let version = version.to_string();
         let platform = platform.to_string();
@@ -205,7 +205,7 @@ async fn fetch_mia(tmp: PathBuf, version: String, platform: String) -> Result<Pa
         .tag_name
         .strip_prefix("mia-")
         .ok_or(anyhow!("invalid release tag"))?;
-    debug!("using mia-{}", &version);
+    debug!("resolved release version: mia-{}", &version);
 
     let asset_filename = format!("mia-{}-{}.tar.gz", &version, platform);
     debug!("searching for {} package", &asset_filename);
