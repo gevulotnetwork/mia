@@ -207,26 +207,19 @@ async fn fetch_mia(tmp: PathBuf, version: String, platform: String) -> Result<Pa
         .ok_or(anyhow!("invalid release tag"))?;
     debug!("using mia-{}", &version);
 
-    let asset_filename = format!("mia-{}-{}", &version, platform);
+    let asset_filename = format!("mia-{}-{}.tar.gz", &version, platform);
     debug!("searching for {} package", &asset_filename);
 
     let asset = release
         .assets
         .iter()
-        .find(|asset| asset.name.starts_with(&asset_filename))
+        .find(|asset| asset.name == asset_filename)
         .ok_or(anyhow!(
             "failed to find MIA package in release mia-{}",
             version
         ))?;
 
-    let asset_dir = match asset.content_type.as_str() {
-        "application/tar+gzip" => {
-            fetch_tar_gz(&tmp, &asset_filename, asset.browser_download_url.clone()).await?
-        }
-        ct => {
-            bail!("unsupported context type for package: {}", ct);
-        }
-    };
+    let asset_dir = fetch_tar_gz(&tmp, &asset_filename, asset.browser_download_url.clone()).await?;
 
     Ok(asset_dir.join(MIA_BIN_NAME))
 }
