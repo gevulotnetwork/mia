@@ -14,7 +14,7 @@ path = "mia-installer/lib.rs"
 
 [dependencies]
 # TODO: replace rev with tag when possible
-gevulot-rs = { git = "https://github.com/gevulotnetwork/gevulot-rs.git", rev = "997bd6c5266a98a69253c58b4bd1a35e8d3ec7ae" }
+gevulot-rs = { git = "https://github.com/gevulotnetwork/gevulot-rs.git", rev = "e972c7c73a88182d22121a995f01abed04dff106" }
 
 anyhow = "1"
 env_logger = "0.11"
