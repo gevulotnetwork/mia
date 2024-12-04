@@ -278,10 +278,10 @@ fn install_mia_symlink(config: &InstallConfig, as_root: bool) -> Result<()> {
             .context("strip path separator from symlink path")?,
     );
 
-    if full_symlink_path.exists() {
+    if full_symlink_path.is_symlink() {
         if config.overwrite_symlink {
             debug!(
-                "symlink {} alreasy exists, removing it",
+                "symlink {} already exists, removing it",
                 config.symlink_path.display()
             );
             run_command(&["rm", full_symlink_path.to_str().unwrap()], as_root)
