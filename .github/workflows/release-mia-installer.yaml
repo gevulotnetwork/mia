@@ -1,0 +1,68 @@
+# This workflow simply checks that pushed mia-installer tag
+# is aligned with its version in Cargo.toml.
+# If this fails, you probably messed up the versioning and forgot
+# to update the version in Cargo.toml.
+# Triggers only for release tags like `mia-installer-0.1.2`.
+
+name: Check mia-installer tag
+
+on:
+  push:
+    tags:
+      - "mia-installer-[0-9]+.[0-9]+.[0-9]+"
+
+jobs:
+  check-tag:
+    name: Check tag is aligned with Cargo version
+
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # Get release version
+      - name: Get MIA installer release version from tag name
+        run: |
+          VERSION=$(echo "${{ github.ref_name }}" \
+            | grep -E "^mia-installer-[0-9]+.[0-9]+.[0-9]+$" \
+            | grep --color=never -Eo "[0-9]+.[0-9]+.[0-9]+$")
+          if [[ -z $VERSION ]]; then
+            echo "Ref is not a MIA installer release tag."
+            echo "To create MIA installer release, use tag names like 'mia-installer-0.1.2'."
+            exit 1;
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.TARGET_PLATFORM }}
+
+      - name: Get MIA installer crate version
+        run: |
+          CARGO_VERSION=$(cargo metadata \
+            --format-version=1 \
+            --no-deps \
+            | jq \
+            --raw-output \
+            '.packages[] | select(.name == "mia-installer") | .version')
+          echo "CARGO_VERSION=$CARGO_VERSION" >> $GITHUB_ENV
+
+      - name: Check tag name is aligned with Cargo.toml version
+        run: |
+          if [[ "$CARGO_VERSION" != "$VERSION" ]]; then
+            echo "Tag name is not aligned with MIA installer crate version."
+            echo "Please ensure that Cargo.toml version is updated."
+            exit 1;
+          fi
+
+      - name: Print release version
+        run: echo $VERSION
