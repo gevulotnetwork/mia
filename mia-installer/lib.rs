@@ -160,6 +160,85 @@ pub fn install(config: &InstallConfig) -> Result<()> {
     Ok(())
 }
 
+/// Get the version string of latest MIA release.
+pub async fn latest_version() -> Result<String> {
+    let octocrab = octocrab::instance();
+    let repo = octocrab.repos(GITHUB_MIA_OWNER, GITHUB_MIA_REPO);
+    let releases = repo.releases();
+    let latest_relese = releases
+        .get_latest()
+        .await
+        .context("get latest MIA release")?;
+    let version = latest_relese
+        .tag_name
+        .strip_prefix("mia-")
+        .ok_or(anyhow!("invalid release tag"))?;
+    Ok(version.to_string())
+}
+
+/// Download MIA release.
+///
+/// # Arguments
+/// - `version` - version of MIA to fetch
+/// - `platform` - platform of MIA to run on
+/// - `path` -  path to the file where MIA binary will be stored
+///
+/// # Errors
+/// - If version starts with `file:` an error will be returned.
+pub async fn download(version: &str, platform: &str, path: &Path) -> Result<()> {
+    if version.starts_with("file:") {
+        bail!("cannot fetch local version of MIA");
+    }
+    let tmp = TempDir::new("mia-installer").context("create temp dir")?;
+    let tmp_mia_path = get_mia(tmp.path(), version, platform)?;
+    fs::copy(tmp_mia_path, path).context("failed to copy MIA to destination file")?;
+    Ok(())
+}
+
+/// Synchronous version of API.
+///
+/// Reuses current runtime if some.
+pub mod sync {
+    use super::{anyhow, runtime, Path, Result};
+
+    /// Get the version string of latest MIA release.
+    pub fn latest_version() -> Result<String> {
+        let join_handler = if let Ok(handle) = runtime::Handle::try_current() {
+            std::thread::spawn(move || handle.block_on(super::latest_version()))
+        } else {
+            std::thread::spawn(|| runtime::Runtime::new()?.block_on(super::latest_version()))
+        };
+        join_handler
+            .join()
+            .map_err(|_| anyhow!("failed to join thread"))?
+    }
+
+    /// Download MIA release.
+    ///
+    /// # Arguments
+    /// - `version` - version of MIA to fetch
+    /// - `platform` - platform of MIA to run on
+    /// - `path` -  path to the file where MIA binary will be stored
+    ///
+    /// # Errors
+    /// - If version starts with `file:` an error will be returned.
+    pub fn download(version: &str, platform: &str, path: &Path) -> Result<()> {
+        let version = version.to_string();
+        let platform = platform.to_string();
+        let path = path.to_path_buf();
+        let join_handler = if let Ok(handle) = runtime::Handle::try_current() {
+            std::thread::spawn(move || handle.block_on(super::download(&version, &platform, &path)))
+        } else {
+            std::thread::spawn(move || {
+                runtime::Runtime::new()?.block_on(super::download(&version, &platform, &path))
+            })
+        };
+        join_handler
+            .join()
+            .map_err(|_| anyhow!("failed to join thread"))?
+    }
+}
+
 fn get_mia(tmp: &Path, version: &str, platform: &str) -> Result<PathBuf> {
     if let Some(version) = version.strip_prefix("file:") {
         info!("using MIA: {}", &version);
@@ -224,7 +303,7 @@ async fn fetch_mia(tmp: PathBuf, version: String, platform: String) -> Result<Pa
     Ok(asset_dir.join(MIA_BIN_NAME))
 }
 
-/// Fetch and unpack `.tar.gz` archive returning file to output directory.
+/// Fetch and unpack `.tar.gz` archive returning path to output directory.
 async fn fetch_tar_gz(tmp: &Path, filename: &str, url: Url) -> Result<PathBuf> {
     debug!("fetching {}", &url);
     let response = reqwest::get(url).await.context("GET request")?;
