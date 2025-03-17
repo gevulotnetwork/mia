@@ -4,6 +4,7 @@ mod command;
 mod logger;
 mod modprobe;
 mod mount;
+mod pre_exit;
 mod qemu;
 mod rt_config;
 
@@ -50,5 +51,6 @@ fn main() -> ! {
         qemu::exit(err);
     }
     // If no exit handler was set, perform simple shutdown.
+    pre_exit::flush();
     shutdown()
 }

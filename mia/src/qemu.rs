@@ -35,6 +35,7 @@ pub fn setup(
 fn exit_error() {
     log::info!(target: TARGET, "exiting QEMU with error");
     if let Some(handler) = QEMU_EXIT_HANDLER.get() {
+        crate::pre_exit::flush();
         handler.exit_failure()
     }
     log::error!(target: TARGET, "QEMU exit handler is not set");
@@ -43,6 +44,7 @@ fn exit_error() {
 fn exit_success() {
     log::info!(target: TARGET, "exiting QEMU with success");
     if let Some(handler) = QEMU_EXIT_HANDLER.get() {
+        crate::pre_exit::flush();
         handler.exit_success()
     }
     log::error!(target: TARGET, "QEMU exit handler is not set");
