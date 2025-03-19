@@ -27,6 +27,9 @@ fn start() -> Result<(), Box<dyn std::error::Error>> {
     logger::setup();
     log::info!(target: TARGET, "start");
 
+    // Mount default filesystems (including kernel API)
+    crate::mount::default_mounts()?;
+
     let cmd = rt_config::load(MIA_CONFIG_PATH.to_string())?;
 
     log::info!(target: TARGET, "run main process");

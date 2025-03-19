@@ -2,13 +2,13 @@ use gevulot_rs::runtime_config::{DebugExit, RuntimeConfig};
 
 use crate::command::Command;
 use crate::modprobe::Modprobe;
+use crate::mount::Mount;
 use crate::qemu;
 
 const TARGET: &str = "rt-config";
 
 pub fn load(mut path: String) -> Result<Command, Box<dyn std::error::Error>> {
     let mut cmd: Option<Command> = None;
-    let mut default_mounts_done = false;
     let modprobe = Modprobe::init()?;
 
     loop {
@@ -16,11 +16,6 @@ pub fn load(mut path: String) -> Result<Command, Box<dyn std::error::Error>> {
 
         let config_file = std::fs::File::open(&path)?;
         let config: RuntimeConfig = serde_yaml::from_reader(config_file)?;
-
-        if config.default_mounts && !default_mounts_done {
-            crate::mount::default_mounts()?;
-            default_mounts_done = true; // avoid re-mounting
-        }
 
         if let Some(DebugExit::X86 {
             iobase,
@@ -32,13 +27,7 @@ pub fn load(mut path: String) -> Result<Command, Box<dyn std::error::Error>> {
         }
 
         for mount in &config.mounts {
-            crate::mount::mount(
-                Some(mount.source.clone()),
-                mount.target.clone(),
-                mount.fstype.clone(),
-                mount.flags,
-                mount.data.clone(),
-            )?;
+            Mount::try_from(mount)?.mount()?;
         }
 
         for env in &config.env {
