@@ -25,6 +25,7 @@ pub fn setup(
     }
     // Init handler at the end so it won't be available if port permissions failed.
     log::info!(
+        target: TARGET,
         "setup QEMU exit handler (success code 0x{:x})",
         success_code
     );
