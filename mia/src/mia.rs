@@ -9,6 +9,7 @@ mod qemu;
 mod rt_config;
 
 const TARGET: &str = "";
+const VERSION: Option<&str> = option_env!("CARGO_PKG_VERSION");
 
 fn shutdown() -> ! {
     log::info!(target: TARGET, "shutdown");
@@ -25,7 +26,7 @@ const MIA_CONFIG_PATH: &str = "/usr/lib/mia/config.yaml";
 
 fn start() -> Result<(), Box<dyn std::error::Error>> {
     logger::setup();
-    log::info!(target: TARGET, "start");
+    log::info!(target: TARGET, "MIA version {}", VERSION.unwrap_or("<unknown>"));
 
     let cmd = rt_config::load(MIA_CONFIG_PATH.to_string())?;
 

@@ -1,4 +1,4 @@
-use gevulot_rs::runtime_config::{DebugExit, RuntimeConfig};
+use gevulot_rs::runtime_config::{self, DebugExit, RuntimeConfig};
 
 use crate::command::Command;
 use crate::modprobe::Modprobe;
@@ -10,6 +10,8 @@ pub fn load(mut path: String) -> Result<Command, Box<dyn std::error::Error>> {
     let mut cmd: Option<Command> = None;
     let mut default_mounts_done = false;
     let modprobe = Modprobe::init()?;
+
+    log::info!(target: TARGET, "version {}", runtime_config::VERSION);
 
     loop {
         log::info!(target: TARGET, "loading {}", &path);
