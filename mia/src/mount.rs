@@ -176,6 +176,15 @@ pub const DEFAULT_MOUNT_TABLE: &[ConstMount] = &[
             .union(MsFlags::MS_STRICTATIME),
         Some("size=20%,nr_inodes=800k"),
     ),
+    (
+        "tmpfs",
+        "/tmp",
+        "tmpfs",
+        MsFlags::MS_NOSUID
+            .union(MsFlags::MS_NODEV)
+            .union(MsFlags::MS_STRICTATIME),
+        Some("mode=01777,size=50%,nr_inodes=1m"),
+    ),
 ];
 
 /// Mount default filesystems from [`DEFAULT_MOUNT_TABLE`].
