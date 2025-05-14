@@ -13,7 +13,7 @@ path = "mia-installer/install_mia.rs"
 path = "mia-installer/lib.rs"
 
 [dependencies]
-gevulot-rs = "0.2"
+gevulot-rs = { git = "https://github.com/gevulotnetwork/gevulot-rs.git", rev = "ae02e25eef60e9b25c87aaf90eb5f0c246fa3eec" }
 
 anyhow = "1"
 env_logger = "0.11"
