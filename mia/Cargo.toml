@@ -11,7 +11,7 @@ name = "mia"
 path = "src/mia.rs"
 
 [dependencies]
-gevulot-rs = "0.3.0"
+gevulot-rs = { git = "https://github.com/gevulotnetwork/gevulot-rs.git", rev = "ae02e25eef60e9b25c87aaf90eb5f0c246fa3eec" }
 
 env_logger = "0.11.5"
 libc = "0.2"
