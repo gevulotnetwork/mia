@@ -20,6 +20,20 @@ pub fn load(mut path: String) -> Result<Command, Box<dyn std::error::Error>> {
     log::info!("result: {:?}", String::from_utf8(out.stdout));
     log::info!("result err: {:?}", String::from_utf8(out.stderr));
 
+    let mut bunding = std::process::Command::new("ls");
+
+    let mut debug_cmd = bunding.arg("-l").arg("/mnt/gevulot/rt-config");
+    let out = debug_cmd.output().unwrap();
+    log::info!("result: {:?}", String::from_utf8(out.stdout));
+    log::info!("result err: {:?}", String::from_utf8(out.stderr));
+
+    let mut bunding = std::process::Command::new("cat");
+
+    let mut debug_cmd = bunding.arg("/mnt/gevulot/rt-config/config.yaml");
+    let out = debug_cmd.output().unwrap();
+    log::info!("result: {:?}", String::from_utf8(out.stdout));
+    log::info!("result err: {:?}", String::from_utf8(out.stderr));
+
     loop {
         log::info!(target: TARGET, "loading {}", &path);
 

@@ -185,6 +185,7 @@ pub const DEFAULT_MOUNT_TABLE: &[ConstMount] = &[
             .union(MsFlags::MS_STRICTATIME),
         Some("mode=01777,size=50%,nr_inodes=1m"),
     ),
+    ("/dev/sdb", "/mnt/gevulot", "ext4", MsFlags::empty(), None),
 ];
 
 /// Mount default filesystems from [`DEFAULT_MOUNT_TABLE`].
