@@ -16,8 +16,8 @@ pub fn load(mut path: String) -> Result<Command, Box<dyn std::error::Error>> {
     let mut debug_cmd = std::process::Command::new("fdisk");
     let a = debug_cmd.arg("-l");
     let out = a.output().unwrap();
-    log::info!("result: {}", String::from_utf8(out.stdout));
-    log::info!("result err: {}", String::from_utf8(out.stderr));
+    log::info!("result: {:?}", String::from_utf8(out.stdout));
+    log::info!("result err: {:?}", String::from_utf8(out.stderr));
 
     loop {
         log::info!(target: TARGET, "loading {}", &path);
