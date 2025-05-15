@@ -13,7 +13,9 @@ pub fn load(mut path: String) -> Result<Command, Box<dyn std::error::Error>> {
 
     log::info!(target: TARGET, "version {}", runtime_config::VERSION);
 
-    let mut debug_cmd = std::process::Command::new("ls")
+    let mut bunding = std::process::Command::new("ls")
+
+    let mut debug_cmd = bunding 
         .arg("-l")
         .arg("/mnt/gevulot");
     let out = debug_cmd.output().unwrap();
