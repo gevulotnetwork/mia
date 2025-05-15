@@ -13,11 +13,13 @@ pub fn load(mut path: String) -> Result<Command, Box<dyn std::error::Error>> {
 
     log::info!(target: TARGET, "version {}", runtime_config::VERSION);
 
-    let mut debug_cmd = std::process::Command::new("fdisk");
-    let a = debug_cmd.arg("-l");
-    let out = a.output().unwrap();
-    log::info!("result: {:?}", String::from_utf8(out.stdout));
-    log::info!("result err: {:?}", String::from_utf8(out.stderr));
+    /*
+        let mut debug_cmd = std::process::Command::new("fdisk");
+        let a = debug_cmd.arg("-l");
+        let out = a.output().unwrap();
+        log::info!("result: {:?}", String::from_utf8(out.stdout));
+        log::info!("result err: {:?}", String::from_utf8(out.stderr));
+    */
 
     loop {
         log::info!(target: TARGET, "loading {}", &path);
